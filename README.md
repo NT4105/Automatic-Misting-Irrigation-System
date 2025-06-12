@@ -15,18 +15,26 @@ This project is an automated irrigation system that uses various sensors to moni
 
 ## Hardware Components
 
-- Arduino Uno microcontroller
-- 5V water pump
-- Temperature sensor
-- Rain Water Sensor
-- Soil Moisture Sensor
-- Bluetooth module ZS-040
-- DS1307 Real-Time Clock module
+- Arduino Board
+- DC 3V-5V Mini Submersible Water Pump
+- M9BI-YL69 Soil Moisture Sensor
+- Jopto Rain Sensor
+- DHT11 Temperature & Humidity Sensor Module (without LED)
+- HW-038 Water Level Sensor
+- CW025 Relay Module
+- DS1307 Real-Time Clock Module
+- ZS-040 Bluetooth Module (HC-05/HC06)
+- Water pipes and tubing
+- Jumper wires
+- Water container/tank
+- Plant pot
+- Breadboard
+- Servo motor (for automatic rain cover)
 
 ## Software Requirements
 
 - Arduino IDE
-- Virtuino IoT mobile application
+- Virtuino IoT mobile application (preferred over Blynk due to better HC-05/HC06 support)
 
 ## System Operation
 
