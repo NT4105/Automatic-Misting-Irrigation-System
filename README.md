@@ -4,6 +4,12 @@
 
 This project is an automated irrigation system that uses various sensors to monitor environmental conditions and control water misting based on predefined parameters. The system can be controlled manually via Bluetooth using the Virtuino IoT mobile application.
 
+## Team Members
+
+- To Thanh Dat (Leader)
+- Nguyen Tan Kim Hao
+- Nguyen Minh Tu
+
 ## Features
 
 - Real-time environmental humidity monitoring
