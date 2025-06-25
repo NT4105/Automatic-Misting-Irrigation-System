@@ -2,7 +2,7 @@
 
 ## Overview
 
-This project is an automated irrigation system that uses various sensors to monitor environmental conditions and control water misting based on predefined parameters. The system can be controlled manually via Bluetooth using the Virtuino IoT mobile application.
+This project is an automated irrigation system that uses various sensors to monitor environmental conditions and control water misting based on predefined parameters. The system can be controlled manually via Bluetooth using the Virtuino 6 mobile application.
 
 ## Team Members
 
@@ -17,7 +17,7 @@ This project is an automated irrigation system that uses various sensors to moni
 - Rain detection for smart irrigation control
 - Manual control through Bluetooth interface
 - Real-time clock functionality for scheduled operations
-- Mobile app control using Virtuino IoT
+- Mobile app control using Virtuino 6 (avaiable for Android os)
 
 ## Hardware Components
 
@@ -40,7 +40,7 @@ This project is an automated irrigation system that uses various sensors to moni
 
 - Arduino IDE
 - Virtuino 6 mobile application (preferred over Blynk due to better HC-05/HC06 support)
-- Libraries: RTClib, DHT sensor library
+- Libraries: RTClib, DHT sensor library, VirtuinoCM
 
 ## System Operation
 
@@ -59,18 +59,18 @@ This project is an automated irrigation system that uses various sensors to moni
 
 3. **Manual Control**
    - Bluetooth connectivity via ZS-040 module
-   - Remote system control through Virtuino IoT app
+   - Remote system control through Virtuino 6 app
    - Real-time sensor data monitoring
    - Manual pump activation/deactivation
 
 ## Setup and Configuration
 
 1. Install the Arduino IDE
-2. Download and install Virtuino IoT app on your mobile device
+2. Download and install Virtuino 6 app on your mobile device
 3. Connect the hardware components according to the circuit diagram
 4. Upload the provided Arduino code
-5. Pair your mobile device with the ZS-040 Bluetooth module
-6. Configure the Virtuino IoT app settings
+5. Pair your mobile device with the HC-05 Bluetooth module
+6. Configure the Virtuino 6 app settings
 
 ## Contributing
 
