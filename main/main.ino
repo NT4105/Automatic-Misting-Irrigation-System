@@ -31,7 +31,6 @@ bool sensorError = false;
 bool soilError = false;
 bool rainError = false;
 bool waterError = false;
-bool set2Overridden = false;
 
 int wateringHour1 = 6;
 int wateringMin1 = 0;
@@ -41,12 +40,6 @@ int wateringMin2 = 0;
 float lastTemperature = 0;
 unsigned long lastTempReadTime = 0;
 const unsigned long TEMP_READ_INTERVAL = 1000;
-
-void calcNextWateringTime(int h1, int m1, int* h2, int* m2) {
-  int totalMinute = h1 * 60 + m1 + 360;
-  *h2 = (totalMinute / 60) % 24;
-  *m2 = totalMinute % 60;
-}
 
 float readTemperature() {
   sensors.requestTemperatures();
@@ -71,10 +64,6 @@ void setup() {
   digitalWrite(pumpPin, RELAY_OFF);
 
   // rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
-  
-
-  calcNextWateringTime(wateringHour1, wateringMin1, &wateringHour2, &wateringMin2);
-  set2Overridden = false;
 
   Serial.println("== AUTOMATIC PLANT WATERING SYSTEM VIA BLUETOOTH ==");
   BTSerial.println("SYSTEM: START");
@@ -107,7 +96,6 @@ void loop() {
     cmd.trim();
     cmd.toLowerCase();
 
-    // Ignore empty commands (often appear when pressing send in app, or accidental line breaks)
     if (cmd.length() == 0) {
       // do nothing
     }
@@ -140,10 +128,6 @@ void loop() {
         if (h >= 0 && h < 24 && m >= 0 && m < 60) {
           wateringHour1 = h;
           wateringMin1 = m;
-          if (!set2Overridden) {
-            calcNextWateringTime(h, m, &wateringHour2, &wateringMin2);
-            BTSerial.println("Auto-set Watering 2: " + String(wateringHour2) + ":" + (wateringMin2 < 10 ? "0" : "") + String(wateringMin2));
-          }
           BTSerial.println("Set Watering 1: " + String(h) + ":" + (m < 10 ? "0" : "") + String(m));
         } else {
           BTSerial.println("ERR: Invalid time!");
@@ -159,7 +143,6 @@ void loop() {
         if (h >= 0 && h < 24 && m >= 0 && m < 60) {
           wateringHour2 = h;
           wateringMin2 = m;
-          set2Overridden = true;
           BTSerial.println("Set Watering 2: " + String(h) + ":" + (m < 10 ? "0" : "") + String(m));
         } else {
           BTSerial.println("ERR: Invalid time!");
@@ -167,11 +150,8 @@ void loop() {
       } else {
         BTSerial.println("ERR: Format set2 hh:mm");
       }
-    } 
-    // Bỏ thông báo CMD? Unknown để tránh treo IDE hoặc app khi nhận lệnh lạ/rỗng
-    // else {
-    //   BTSerial.println("CMD? Unknown: " + cmd);
-    // }
+    }
+    // CMD unknown: bỏ qua không xử lý
   }
 
   // --- Manual mode: auto stop when out of water ---
