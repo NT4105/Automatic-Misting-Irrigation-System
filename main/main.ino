@@ -41,7 +41,7 @@ float lastTemperature = 0;
 unsigned long lastTempReadTime = 0;
 const unsigned long TEMP_READ_INTERVAL = 1000;
 
-// --- Lưu giá trị gửi lần trước ---
+// --- Store last sent values ---
 int lastSentSoil = -1000;
 int lastSentWater = -1000;
 String lastSentRainSt = "";
@@ -51,17 +51,17 @@ String lastSentPumpSt = "";
 
 float lastSentTemp = -1000;
 
-// Lưu thời gian tưới đã gửi
+// Store sent watering times
 int lastSentWateringHour1 = -1, lastSentWateringMin1 = -1;
 int lastSentWateringHour2 = -1, lastSentWateringMin2 = -1;
 
-// Biến trạng thái tự động tưới
+// Auto watering state
 bool wateringInProgress = false;
 unsigned long wateringStartMillis = 0;
 const unsigned long WATERING_DURATION = 3UL * 60UL * 1000UL;
 bool userForcePumpOff = false;
 
-// Biến cờ và biến ghi nhớ
+// State flags and trackers
 bool notifiedEndWatering = false;
 bool notifiedUserStop = false;
 bool skipCurrentWatering = false;
@@ -158,7 +158,7 @@ void loop() {
       BTSerial.println("MODE: AUTO");
       notifiedUserStop = false;
       notifiedEndWatering = false;
-      // Không reset skipCurrentWatering ở đây, giữ nguyên để không tưới lại cho đến phút mới
+      // Do not reset skipCurrentWatering here, keep as is to avoid watering again until next minute
     } else if (cmd.startsWith("set1 ")) {
       int sep = cmd.indexOf(':', 5);
       if (sep > 0) {
@@ -202,7 +202,6 @@ void loop() {
         BTSerial.println("ERR: Format set2 hh:mm");
       }
     }
-    // CMD unknown: bỏ qua không xử lý
   }
 
   // --- Manual mode: auto stop when out of water or when raining ---
@@ -220,7 +219,7 @@ void loop() {
     }
   }
 
-  // --- Automatic watering logic with temp protection ---
+  // --- Automatic watering logic with temperature protection ---
   if (!manualMode) {
     bool timeToWater1 = (hour == wateringHour1 && minute == wateringMin1);
     bool timeToWater2 = (hour == wateringHour2 && minute == wateringMin2);
@@ -237,7 +236,7 @@ void loop() {
     bool allowWatering = (soilDry && !isRaining && waterOK && !sensorError &&
                       (tempNormal || tempSafeTime));
 
-    // --- Chỉ tưới 1 lần duy nhất trong 1 phút, và chỉ khi không skipCurrentWatering ---
+    // --- Only water once per minute, and only if not skipping current watering ---
     if ((timeToWater1 || timeToWater2) && !wateringInProgress && (hour != lastWateredHour || minute != lastWateredMinute) && !skipCurrentWatering) {
       wateringInProgress = true;
       wateringStartMillis = millis();
@@ -296,7 +295,7 @@ void loop() {
       }
     }
 
-    // --- Nếu đã qua phút mới thì cho phép tưới tiếp ở chu kỳ tiếp theo ---
+    // --- If the minute has passed, allow watering for the next cycle ---
     if ((hour != lastWateredHour || minute != lastWateredMinute)) {
       skipCurrentWatering = false;
       userForcePumpOff = false;
@@ -305,7 +304,7 @@ void loop() {
     }
   }
 
-  // --- Xử lý điều kiện gửi dữ liệu ---
+  // --- Handle data sending conditions ---
   String rainSt = (rainVal < rainThreshold) ? "Yes" : "No";
   String waterSt = (waterVal > waterThreshold) ? "Yes" : "No";
   String pumpSt = pumpState ? "ON" : "OFF";
