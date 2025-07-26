@@ -27,7 +27,7 @@ This project is an automated irrigation system that uses various sensors to moni
 - Jopto Rain Sensor
 - DS18b20 Temperature Sensor
 - HW-038 Water Level Sensor
-- CW025 Relay Module
+- CW025 Relay Module 1 channel
 - DS1307 Real-Time Clock Module
 - ZS-040 Bluetooth Module (HC-05 has button)
 - Water pipes and tubing
@@ -40,7 +40,7 @@ This project is an automated irrigation system that uses various sensors to moni
 
 - Arduino IDE
 - Serial Bluetooth Terminal mobile application (preferred over Blynk due to better HC-05/HC06 support)
-- Libraries: RTClib, DallasTemperature
+- Libraries: RTClib, DallasTemperature, OneWire
 
 ## System Operation
 
