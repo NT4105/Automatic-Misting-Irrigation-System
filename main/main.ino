@@ -23,7 +23,7 @@ DallasTemperature sensors(&oneWire);
 
 const int soilPctStopThreshold = 55;
 const int rainThreshold = 600;
-const int waterThreshold = 300;
+const int waterThreshold = 200;
 
 bool pumpState = false;
 bool manualMode = false;
@@ -41,17 +41,44 @@ float lastTemperature = 0;
 unsigned long lastTempReadTime = 0;
 const unsigned long TEMP_READ_INTERVAL = 1000;
 
-float readTemperature() {
-  sensors.requestTemperatures();
-  return sensors.getTempCByIndex(0);
-}
+// --- Lưu giá trị gửi lần trước ---
+int lastSentSoil = -1000;
+int lastSentWater = -1000;
+String lastSentRainSt = "";
+String lastSentWaterSt = "";
+String lastSentModeSt = "";
+String lastSentPumpSt = "";
 
-unsigned long lastSendTime = 0;
-String lastSentData = "";
+float lastSentTemp = -1000;
 
+// Lưu thời gian tưới đã gửi
+int lastSentWateringHour1 = -1, lastSentWateringMin1 = -1;
+int lastSentWateringHour2 = -1, lastSentWateringMin2 = -1;
+
+// Biến trạng thái tự động tưới
 bool wateringInProgress = false;
 unsigned long wateringStartMillis = 0;
 const unsigned long WATERING_DURATION = 3UL * 60UL * 1000UL;
+bool userForcePumpOff = false;
+
+// Biến cờ và biến ghi nhớ
+bool notifiedEndWatering = false;
+bool notifiedUserStop = false;
+bool skipCurrentWatering = false;
+int lastWateredHour = -1;
+int lastWateredMinute = -1;
+
+float readTemperature() {
+  unsigned long start = millis();
+  sensors.requestTemperatures();
+  while (!sensors.isConversionComplete()) {
+    if (millis() - start > 200) break;
+    delay(1);
+  }
+  float t = sensors.getTempCByIndex(0);
+  if (t == DEVICE_DISCONNECTED_C || t < -50 || t > 100) t = lastTemperature;
+  return t;
+}
 
 void setup() {
   Serial.begin(9600);
@@ -77,7 +104,8 @@ void loop() {
   int soilRaw = analogRead(soilPin);
   int rainVal = analogRead(rainPin);
   int waterVal = analogRead(waterPin);
-  int soilPercent = map(soilRaw, 0, 1023, 100, 0);
+  int soilPercent = map(soilRaw, 990, 634, 0, 100);
+  soilPercent = constrain(soilPercent, 0, 100);
 
   unsigned long currentMillis = millis();
   if (currentMillis - lastTempReadTime >= TEMP_READ_INTERVAL) {
@@ -105,21 +133,32 @@ void loop() {
         manualMode = true;
         digitalWrite(pumpPin, RELAY_ON);
         BTSerial.println("PUMP: ON (Manual)");
+        userForcePumpOff = false;
       } else {
         BTSerial.println("❌ Không thể bật bơm: Mực nước thấp!");
       }
     } else if (cmd == "off") {
       pumpState = false;
       digitalWrite(pumpPin, RELAY_OFF);
+      userForcePumpOff = true;
+      skipCurrentWatering = true;
+      wateringInProgress = false;
       BTSerial.println("PUMP: OFF");
     } else if (cmd == "manual") {
       manualMode = true;
       BTSerial.println("MODE: MANUAL");
+      userForcePumpOff = false;
+      notifiedUserStop = false;
+      skipCurrentWatering = false;
+      notifiedEndWatering = false;
     } else if (cmd == "auto") {
       manualMode = false;
       pumpState = false;
       digitalWrite(pumpPin, RELAY_OFF);
       BTSerial.println("MODE: AUTO");
+      notifiedUserStop = false;
+      notifiedEndWatering = false;
+      // Không reset skipCurrentWatering ở đây, giữ nguyên để không tưới lại cho đến phút mới
     } else if (cmd.startsWith("set1 ")) {
       int sep = cmd.indexOf(':', 5);
       if (sep > 0) {
@@ -128,6 +167,12 @@ void loop() {
         if (h >= 0 && h < 24 && m >= 0 && m < 60) {
           wateringHour1 = h;
           wateringMin1 = m;
+          userForcePumpOff = false;
+          notifiedUserStop = false;
+          skipCurrentWatering = false;
+          notifiedEndWatering = false;
+          lastWateredHour = -1;
+          lastWateredMinute = -1;
           BTSerial.println("Set Watering 1: " + String(h) + ":" + (m < 10 ? "0" : "") + String(m));
         } else {
           BTSerial.println("ERR: Invalid time!");
@@ -143,6 +188,12 @@ void loop() {
         if (h >= 0 && h < 24 && m >= 0 && m < 60) {
           wateringHour2 = h;
           wateringMin2 = m;
+          userForcePumpOff = false;
+          notifiedUserStop = false;
+          skipCurrentWatering = false;
+          notifiedEndWatering = false;
+          lastWateredHour = -1;
+          lastWateredMinute = -1;
           BTSerial.println("Set Watering 2: " + String(h) + ":" + (m < 10 ? "0" : "") + String(m));
         } else {
           BTSerial.println("ERR: Invalid time!");
@@ -154,13 +205,18 @@ void loop() {
     // CMD unknown: bỏ qua không xử lý
   }
 
-  // --- Manual mode: auto stop when out of water ---
+  // --- Manual mode: auto stop when out of water or when raining ---
   if (manualMode && pumpState) {
     if (waterVal <= waterThreshold) {
       pumpState = false;
       digitalWrite(pumpPin, RELAY_OFF);
       Serial.println("❌ Dừng bơm manual: Mực nước thấp!");
       BTSerial.println("❌ Dừng bơm manual: Mực nước thấp!");
+    } else if (rainVal < rainThreshold) {
+      pumpState = false;
+      digitalWrite(pumpPin, RELAY_OFF);
+      Serial.println("❌ Dừng bơm manual: Trời đang mưa!");
+      BTSerial.println("❌ Dừng bơm manual: Trời đang mưa!");
     }
   }
 
@@ -181,14 +237,21 @@ void loop() {
     bool allowWatering = (soilDry && !isRaining && waterOK && !sensorError &&
                       (tempNormal || tempSafeTime));
 
-    if ((timeToWater1 || timeToWater2) && !wateringInProgress) {
+    // --- Chỉ tưới 1 lần duy nhất trong 1 phút, và chỉ khi không skipCurrentWatering ---
+    if ((timeToWater1 || timeToWater2) && !wateringInProgress && (hour != lastWateredHour || minute != lastWateredMinute) && !skipCurrentWatering) {
       wateringInProgress = true;
       wateringStartMillis = millis();
+      userForcePumpOff = false;
+      notifiedUserStop = false;
+      skipCurrentWatering = false;
+      notifiedEndWatering = false;
+      lastWateredHour = hour;
+      lastWateredMinute = minute;
     }
 
     if (wateringInProgress) {
-      if (millis() - wateringStartMillis < WATERING_DURATION) {
-        if (allowWatering) {
+      if (millis() - wateringStartMillis < WATERING_DURATION && !skipCurrentWatering) {
+        if (allowWatering && !userForcePumpOff) {
           if (!pumpState) {
             pumpState = true;
             digitalWrite(pumpPin, RELAY_ON);
@@ -200,7 +263,14 @@ void loop() {
             pumpState = false;
             digitalWrite(pumpPin, RELAY_OFF);
           }
-          if (tempTooHotTime) {
+          if (userForcePumpOff && !notifiedUserStop) {
+            Serial.println("❌ Không tưới: User đã tắt bơm!");
+            BTSerial.println("❌ Không tưới: User đã tắt bơm!");
+            notifiedUserStop = true;
+            skipCurrentWatering = true;
+            wateringInProgress = false;
+          }
+          else if (tempTooHotTime) {
             Serial.println("❌ Không tưới: Nhiệt độ cao và đang trong giờ dễ sốc nhiệt (11h–15h)");
             BTSerial.println("❌ Không tưới: Nhiệt độ cao và đang trong giờ dễ sốc nhiệt (11h–15h)");
           } else if (!soilDry) {
@@ -218,38 +288,89 @@ void loop() {
         pumpState = false;
         digitalWrite(pumpPin, RELAY_OFF);
         wateringInProgress = false;
+        if (!notifiedEndWatering) {
+          Serial.println("⏹️ Đã kết thúc chu kỳ tưới tự động.");
+          BTSerial.println("⏹️ Đã kết thúc chu kỳ tưới tự động.");
+          notifiedEndWatering = true;
+        }
       }
+    }
+
+    // --- Nếu đã qua phút mới thì cho phép tưới tiếp ở chu kỳ tiếp theo ---
+    if ((hour != lastWateredHour || minute != lastWateredMinute)) {
+      skipCurrentWatering = false;
+      userForcePumpOff = false;
+      notifiedUserStop = false;
+      notifiedEndWatering = false;
     }
   }
 
-  // --- Report ---
+  // --- Xử lý điều kiện gửi dữ liệu ---
   String rainSt = (rainVal < rainThreshold) ? "Yes" : "No";
   String waterSt = (waterVal > waterThreshold) ? "Yes" : "No";
   String pumpSt = pumpState ? "ON" : "OFF";
   String modeSt = manualMode ? "MANUAL" : "AUTO";
   String tempSt = String(lastTemperature, 1) + "°C";
 
-  Serial.print("[" + String(hour) + ":" + String(minute) + "] ");
-  Serial.print("Soil: " + String(soilPercent) + "%, ");
-  Serial.print("Rain: " + rainSt + ", ");
-  Serial.print("Water: " + String(waterVal) + ", ");
-  Serial.print("Pump: " + pumpSt + ", ");
-  Serial.print("Mode: " + modeSt + ", ");
-  Serial.print("Temp: " + tempSt + ", ");
-  Serial.print("Water Time 1: " + String(wateringHour1) + ":" + String(wateringMin1) + ", ");
-  Serial.println("Water Time 2: " + String(wateringHour2) + ":" + String(wateringMin2));
+  bool sendFlag = false;
 
-  String btData = "[" + String(hour) + ":" + String(minute) + "] " +
-                  "Soil:" + String(soilPercent) + " " +
-                  "Rain:" + rainSt + " " +
-                  "Water:" + waterSt + " " +
-                  "Temp:" + String(lastTemperature, 1) + " " +
-                  "Pump:" + String(pumpState ? 1 : 0) + " " +
-                  "Mode:" + (manualMode ? "M" : "A");
+  if (abs(soilPercent - lastSentSoil) >= 10) {
+    sendFlag = true;
+    lastSentSoil = soilPercent;
+  }
+  if (abs(waterVal - lastSentWater) >= 20) {
+    sendFlag = true;
+    lastSentWater = waterVal;
+  }
+  if (rainSt != lastSentRainSt) {
+    sendFlag = true;
+    lastSentRainSt = rainSt;
+  }
+  if (waterSt != lastSentWaterSt) {
+    sendFlag = true;
+    lastSentWaterSt = waterSt;
+  }
+  if (modeSt != lastSentModeSt) {
+    sendFlag = true;
+    lastSentModeSt = modeSt;
+  }
+  if (pumpSt != lastSentPumpSt) {
+    sendFlag = true;
+    lastSentPumpSt = pumpSt;
+  }
+  if (abs(lastTemperature - lastSentTemp) >= 1.0) {
+    sendFlag = true;
+    lastSentTemp = lastTemperature;
+  }
+  if (wateringHour1 != lastSentWateringHour1 || wateringMin1 != lastSentWateringMin1 ||
+      wateringHour2 != lastSentWateringHour2 || wateringMin2 != lastSentWateringMin2) {
+    sendFlag = true;
+    lastSentWateringHour1 = wateringHour1;
+    lastSentWateringMin1 = wateringMin1;
+    lastSentWateringHour2 = wateringHour2;
+    lastSentWateringMin2 = wateringMin2;
+  }
 
-  if (btData != lastSentData) {
+  if (sendFlag) {
+    Serial.print("[" + String(hour) + ":" + String(minute) + "] ");
+    Serial.print("Soil: " + String(soilPercent) + "%, ");
+    Serial.print("Rain: " + rainSt + ", ");
+    Serial.print("Water: " + String(waterVal) + ", ");
+    Serial.print("Pump: " + pumpSt + ", ");
+    Serial.print("Mode: " + modeSt + ", ");
+    Serial.print("Temp: " + tempSt + ", ");
+    Serial.print("Water Time 1: " + String(wateringHour1) + ":" + String(wateringMin1) + ", ");
+    Serial.println("Water Time 2: " + String(wateringHour2) + ":" + String(wateringMin2));
+
+    String btData = "[" + String(hour) + ":" + String(minute) + "] " +
+                    "Soil:" + String(soilPercent) + " " +
+                    "Rain:" + rainSt + " " +
+                    "Water:" + waterSt + " " +
+                    "Temp:" + String(lastTemperature, 1) + " " +
+                    "Pump:" + String(pumpState ? 1 : 0) + " " +
+                    "Mode:" + (manualMode ? "M" : "A");
+
     BTSerial.println(btData);
-    lastSentData = btData;
   }
 
   delay(100);
